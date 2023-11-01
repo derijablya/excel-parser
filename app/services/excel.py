@@ -1,15 +1,16 @@
 from collections import defaultdict
 from io import BytesIO
 
-from fastapi import Depends, File
+from fastapi import Depends, File, HTTPException
 from openpyxl.workbook import Workbook
 from openpyxl.utils import get_column_letter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
+from app.logger import logger
 from app import models
 from app.repository.postgres import get_session
+from app.serializers import Version
 from app.services.utils import parse_data
 
 
@@ -20,11 +21,17 @@ class ExcelService:
         self.data = models.Data
         self.version = models.Version
 
-    async def load_excel_file(self, file: File):
-        data = await parse_data(file)
+    async def load_excel_file(self, file: File) -> Version:
+        try:
+            data = await parse_data(file)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
         version = self.version()
         self.repository.add(version)
         await self.repository.flush()
+        new_version = Version(
+            version=version.version,
+        )
         for project, values in data.items():
             project = self.project(
                 code=project[0], name=project[1], version_id=version.id
@@ -40,21 +47,23 @@ class ExcelService:
                 )
                 self.repository.add(data)
         await self.repository.commit()
-        return {"status": "ok"}
+        return new_version
 
-    async def get_excel_file(self, version):
+    async def get_excel_file(self, file_version):
         workbook = Workbook()
         sheet = workbook.active
 
         stmt = (
             select(self.version)
-            .where(self.version.version == version)
+            .where(self.version.version == file_version)
             .options(selectinload(self.version.project).selectinload(self.project.data))
         )
 
         result = await self.repository.execute(stmt)
 
         version = result.scalars().first()
+        if not version:
+            raise HTTPException(status_code=404, detail="Version not found")
 
         unique_dates = sorted(
             {row.date for project in version.project for row in project.data}

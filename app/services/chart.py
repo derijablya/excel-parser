@@ -1,3 +1,5 @@
+from typing import List
+
 from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,7 +7,8 @@ from sqlalchemy.orm import selectinload
 
 from app import models
 from app.repository.postgres import get_session
-from app.serializers import ChartData
+from app.serializers import ChartDataIn
+from app.serializers import ChartDataOut, ValueTypes
 
 
 class ChartService:
@@ -15,8 +18,7 @@ class ChartService:
         self.data = models.Data
         self.version = models.Version
 
-
-    async def generate_data(self, required_data: ChartData):
+    async def generate_data(self, required_data: ChartDataIn) -> List[ChartDataOut]:
         if required_data.version:
             stmt = (
                 select(self.version)
@@ -53,11 +55,11 @@ class ChartService:
                         }
 
                     if required_data.value_type:
-                        if required_data.value_type == "plan" and data_entry.plan:
+                        if required_data.value_type == ValueTypes.PLAN and data_entry.plan:
                             date_totals[date_str]["total_plan"] += float(
                                 data_entry.plan
                             )
-                        elif required_data.value_type == "fact" and data_entry.factual:
+                        elif required_data.value_type == ValueTypes.FACT and data_entry.factual:
                             date_totals[date_str]["total_fact"] += float(
                                 data_entry.factual
                             )

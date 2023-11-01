@@ -18,19 +18,15 @@ class _Settings(BaseSettings):
 
 class Settings(_Settings):
     API_SERVER_PORT: PositiveInt
-    #: str: Postgresql host.
     POSTGRES_HOST: str
-    #: PositiveInt: positive int (x > 0) port of postgresql.
     POSTGRES_PORT: PositiveInt
-    #: str: Postgresql user.
     POSTGRES_USER: str
-    #: SecretStr: Postgresql password.
     POSTGRES_PASSWORD: str
-    #: str: Postgresql database name.
     POSTGRES_DB: str
 
-    TEST_HOST: str
-    TEST_DB: str
+    MIN_COLS: PositiveInt
+    MAX_COLS: PositiveInt
+    MAX_ROWS: PositiveInt
 
     model_config = SettingsConfigDict(env_file=find_dotenv(".env"))
 
