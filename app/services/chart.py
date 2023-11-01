@@ -1,7 +1,7 @@
 from typing import List
 
 from fastapi import Depends
-from sqlalchemy import select
+from sqlalchemy import select, extract, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -19,66 +19,57 @@ class ChartService:
         self.version = models.Version
 
     async def generate_data(self, required_data: ChartDataIn) -> List[ChartDataOut]:
-        if required_data.version:
-            stmt = (
-                select(self.version)
-                .where(self.version.version == required_data.version)
-                .options(
-                    selectinload(self.version.project).selectinload(self.project.data)
+        query = await self.build_query(required_data)
+        result = await self.repository.execute(query)
+        rows = result.fetchall()
+
+        data_list: List[ChartDataOut] = []
+
+        for row in rows:
+            data_dict = ChartDataOut(
+                date=str(row.date),
+                total_plan=float(row.total_plan) if row.total_plan else 0,
+                total_fact=float(row.total_fact) if row.total_fact else 0,
+            )
+            data_list.append(data_dict)
+
+        return data_list
+
+    async def build_query(self, chart_data: ChartDataIn):
+        base_query = (
+            select(self.version, self.data)
+            .join_from(self.version, self.project)
+            .join_from(self.project, self.data)
+        )
+
+        if chart_data.version:
+            base_query = base_query.where(self.version.version == chart_data.version)
+
+        if chart_data.year:
+            base_query = base_query.where(
+                extract("year", self.data.date) == chart_data.year
+            )
+
+        value_type_column_map = {
+            "plan": self.data.plan,
+            "fact": self.data.factual,
+        }
+
+        if chart_data.value_type:
+            if chart_data.value_type in value_type_column_map:
+                base_query = base_query.where(
+                    value_type_column_map[chart_data.value_type] != None
                 )
-            )
-        else:
-            stmt = select(self.version).options(
-                selectinload(self.version.project).selectinload(self.project.data)
-            )
 
-        versions = await self.repository.execute(stmt)
+        base_query = base_query.group_by(self.data.date)
 
-        date_totals = {}
+        plan_total = func.sum(self.data.plan).label("total_plan")
+        fact_total = func.sum(self.data.factual).label("total_fact")
 
-        for version in versions.scalars():
-            for project in version.project:
-                for data_entry in project.data:
-                    if (
-                        required_data.year is not None
-                        and data_entry.date.year != required_data.year
-                    ):
-                        continue
+        base_query = base_query.with_only_columns(
+            self.data.date, plan_total, fact_total
+        )
 
-                    date_str = data_entry.date.strftime("%m/%d/%Y")
+        base_query = base_query.order_by(self.data.date)
 
-                    if date_str not in date_totals:
-                        date_totals[date_str] = {
-                            "date": date_str,
-                            "total_plan": 0,
-                            "total_fact": 0,
-                        }
-
-                    if required_data.value_type:
-                        if (
-                            required_data.value_type == ValueTypes.PLAN
-                            and data_entry.plan
-                        ):
-                            date_totals[date_str]["total_plan"] += float(
-                                data_entry.plan
-                            )
-                        elif (
-                            required_data.value_type == ValueTypes.FACT
-                            and data_entry.factual
-                        ):
-                            date_totals[date_str]["total_fact"] += float(
-                                data_entry.factual
-                            )
-                    else:
-                        if data_entry.plan:
-                            date_totals[date_str]["total_plan"] += float(
-                                data_entry.plan
-                            )
-                        if data_entry.factual:
-                            date_totals[date_str]["total_fact"] += float(
-                                data_entry.factual
-                            )
-
-        chart_data = list(date_totals.values())
-        chart_data.sort(key=lambda x: x["date"])
-        return chart_data
+        return base_query
