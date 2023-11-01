@@ -23,7 +23,6 @@ class ChartService:
         query = await self.build_query(required_data)
         result = await self.repository.execute(query)
         rows = result.fetchall()
-        print(rows)
         return TypeAdapter(List[ChartDataOut]).validate_python(rows)
 
     async def build_query(self, chart_data: ChartDataIn):
@@ -47,11 +46,9 @@ class ChartService:
         fact_total = func.sum(self.data.factual).label("total_fact")
 
         if chart_data.value_type == ValueTypes.PLAN:
-            print("plan")
             base_query = base_query.add_columns(plan_total)
             base_query = base_query.with_only_columns(self.data.date, plan_total)
         elif chart_data.value_type == ValueTypes.FACT:
-            print("fact")
             base_query = base_query.add_columns(fact_total)
             base_query = base_query.with_only_columns(self.data.date, fact_total)
         else:
