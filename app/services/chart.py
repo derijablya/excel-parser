@@ -55,11 +55,17 @@ class ChartService:
                         }
 
                     if required_data.value_type:
-                        if required_data.value_type == ValueTypes.PLAN and data_entry.plan:
+                        if (
+                            required_data.value_type == ValueTypes.PLAN
+                            and data_entry.plan
+                        ):
                             date_totals[date_str]["total_plan"] += float(
                                 data_entry.plan
                             )
-                        elif required_data.value_type == ValueTypes.FACT and data_entry.factual:
+                        elif (
+                            required_data.value_type == ValueTypes.FACT
+                            and data_entry.factual
+                        ):
                             date_totals[date_str]["total_fact"] += float(
                                 data_entry.factual
                             )
