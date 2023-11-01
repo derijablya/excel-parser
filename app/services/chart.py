@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import Depends
+from pydantic import TypeAdapter
 from sqlalchemy import select, extract, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,18 +23,8 @@ class ChartService:
         query = await self.build_query(required_data)
         result = await self.repository.execute(query)
         rows = result.fetchall()
-
-        data_list: List[ChartDataOut] = []
-
-        for row in rows:
-            data_dict = ChartDataOut(
-                date=str(row.date),
-                total_plan=float(row.total_plan) if row.total_plan else 0,
-                total_fact=float(row.total_fact) if row.total_fact else 0,
-            )
-            data_list.append(data_dict)
-
-        return data_list
+        print(rows)
+        return TypeAdapter(List[ChartDataOut]).validate_python(rows)
 
     async def build_query(self, chart_data: ChartDataIn):
         base_query = (
@@ -50,25 +41,24 @@ class ChartService:
                 extract("year", self.data.date) == chart_data.year
             )
 
-        value_type_column_map = {
-            "plan": self.data.plan,
-            "fact": self.data.factual,
-        }
-
-        if chart_data.value_type:
-            if chart_data.value_type in value_type_column_map:
-                base_query = base_query.where(
-                    value_type_column_map[chart_data.value_type] != None
-                )
-
         base_query = base_query.group_by(self.data.date)
 
         plan_total = func.sum(self.data.plan).label("total_plan")
         fact_total = func.sum(self.data.factual).label("total_fact")
 
-        base_query = base_query.with_only_columns(
-            self.data.date, plan_total, fact_total
-        )
+        if chart_data.value_type == ValueTypes.PLAN:
+            print("plan")
+            base_query = base_query.add_columns(plan_total)
+            base_query = base_query.with_only_columns(self.data.date, plan_total)
+        elif chart_data.value_type == ValueTypes.FACT:
+            print("fact")
+            base_query = base_query.add_columns(fact_total)
+            base_query = base_query.with_only_columns(self.data.date, fact_total)
+        else:
+            base_query = base_query.add_columns(plan_total, fact_total)
+            base_query = base_query.with_only_columns(
+                self.data.date, plan_total, fact_total
+            )
 
         base_query = base_query.order_by(self.data.date)
 

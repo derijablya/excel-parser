@@ -1,7 +1,8 @@
+import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.serializers.value_types import ValueTypes
 
@@ -13,6 +14,8 @@ class ChartDataIn(BaseModel):
 
 
 class ChartDataOut(BaseModel):
-    date: str
-    total_plan: float
-    total_fact: float
+    date: datetime.date
+    total_plan: Optional[float] = None
+    total_fact: Optional[float] = None
+
+    model_config = ConfigDict(from_attributes=True)
